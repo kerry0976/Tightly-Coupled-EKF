@@ -1,7 +1,12 @@
 #include <pybind11/pybind11.h>
+#include <pybind11/eigen.h>
+#include <eigen3/Eigen/LU>
+
 namespace py = pybind11;
 
 #include <math.h>
+#include <iostream>
+using namespace std; 
 
 #include "../nav_common/structs.h"
 
@@ -35,28 +40,30 @@ public:
         filt.Set_PosSigmaD( config.sig_gps_p_d );
         filt.Set_VelSigmaNE( config.sig_gps_v_ne );
         filt.Set_VelSigmaD( config.sig_gps_v_d );
+        filt.Set_PseudorangeSigma(config.sig_pseudorange);
+        filt.Set_PseudorangeRateSigma(config.sig_pseudorangeRate);
         
         // commit these values
         filt.Configure();
     }
     
-    void update(IMUdata imu, GNSS_raw_measurement gnss_raw_measurement) {
+    void update(IMUdata imu, GNSS_measurement &gnss_measurement) {
         Vector3f wMeas_rps( imu.p, imu.q, imu.r );
         Vector3f aMeas_mps2( imu.ax, imu.ay, imu.az );
         Vector3f magMeas( imu.hx, imu.hy, imu.hz );
         //Vector3d pMeas_D_rrm( gnss_raw_measurement.lat*D2R, gnss_raw_measurement.lon*D2R, gnss_raw_measurement.alt);
         //Vector3f vMeas_L_mps( gnss_raw_measurement.vn, gnss_raw_measurement.ve, gnss_raw_measurement.vd );
-       
+        // std::cout <<  gnss_measurement.gnss_measurement << std::endl; 
         current_time = imu.time;
         if ( ! filt.Initialized() ) {
-            filt.Initialize(wMeas_rps, aMeas_mps2, magMeas, pMeas_D_rrm, vMeas_L_mps);
+            filt.Initialize(wMeas_rps, aMeas_mps2, magMeas, gnss_measurement.gnss_measurement);
         }
         // filt.Update((uint64_t)(imu.time * 1e+6),
         //             (unsigned long)(gps.time * 100),
         //             wMeas_rps, aMeas_mps2, magMeas, pMeas_D_rrm, vMeas_L_mps);
         filt.Update((uint64_t)(imu.time * 1e+6),
-                    (unsigned long)(gnss_raw_measurement.time * 100),
-                    wMeas_rps, aMeas_mps2, magMeas, gnss_raw_measurement);            
+                    (unsigned long)(gnss_measurement.time * 100),
+                    wMeas_rps, aMeas_mps2, magMeas, gnss_measurement.gnss_measurement);            
     }
     
     NAVdata get_nav() {

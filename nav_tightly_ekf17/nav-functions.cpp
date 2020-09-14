@@ -18,8 +18,10 @@ B - Body: origin at Body CG, [x- Fwd, y- Starboard, z- Down]
 All units meters and radians
 "Acceleration" is actually "specific gravity", ie. gravity is removed.
 */
-
+#include <iostream>
+using namespace std; 
 #include "nav-functions.h"
+#include "../nav_common/structs.h"
 
 // Calculate the rate of change of latitude, longitude,
 // and altitude using the velocity in NED coordinates and WGS-84.
@@ -512,6 +514,15 @@ Matrix3f Eul2DCM(Vector3f eul)
     return C;
 }
 
+// Convert DCM to Euler 
+Vector3f DCM2Eul(Matrix3f T_B2L)
+{
+   Vector3f eul; 
+   eul(0) = atan2f(T_B2L(1,2), T_B2L(2,2));
+   eul(1) = -asinf(T_B2L(0,2));
+   eul(2) = atan2f(T_B2L(0,1),T_B2L(0,0));
+   return eul; 
+}
 
 // ned to ecef centered at the coordinate given by lla
 Vector3f L2E(Vector3f p_L, Vector3f pRef_D)
@@ -541,7 +552,8 @@ Vector3f L2E(Vector3f p_L, Vector3f pRef_D)
 }
 
 // compute vehicle's postion, velocity in E frame and clock offset (m) and drift (m/s) 
-VectorXd GNSS_LS_pos_vel(MatrixXd gnss_measurement, int no_sat, Vector3d pEst_E_m_, Vector3d vEst_E_mps_)
+void GNSS_LS_pos_vel(MatrixXd &gnss_measurement, int no_sat, 
+                     Vector3d &pEst_E_m_, Vector3d &vEst_E_mps_, double &clockBias_m_, double &clockRateBias_mps_)
 {
     /*
    GNSS_LS_position_velocity - Calculates position, velocity, clock offset, 
@@ -569,12 +581,12 @@ VectorXd GNSS_LS_pos_vel(MatrixXd gnss_measurement, int no_sat, Vector3d pEst_E_
     %   est_clock             estimated receiver clock offset (m) and drift (m/s)
    */
 
-
+    
     // Position and Clock OFFSET
     VectorXd x_pred(4, 1);
     x_pred.setZero();
     x_pred.segment(0, 3) = pEst_E_m_;
-    x_pred(3) = vEst_E_mps_(0);
+    x_pred(3) = 0;
 
     // allocate space for estimation
     VectorXd delta_r(3, 1);
@@ -649,10 +661,14 @@ VectorXd GNSS_LS_pos_vel(MatrixXd gnss_measurement, int no_sat, Vector3d pEst_E_
     Omega_ie = Skew(omega_ie);
 
     // save the estimated postion and clock offset
-    output(0) = x_est_1(0);
-    output(1) = x_est_1(1);
-    output(2) = x_est_1(2);
-    output(6) = x_est_1(3); // record clock offset
+    // output(0) = x_est_1(0);
+    // output(1) = x_est_1(1);
+    // output(2) = x_est_1(2);
+    // output(6) = x_est_1(3); // record clock offset
+    pEst_E_m_(0) = x_est_1(0);
+    pEst_E_m_(1) = x_est_1(1);
+    pEst_E_m_(2) = x_est_1(2);
+    clockBias_m_ = (float)x_est_1(3); // record clock offset
 
     x_pred.setZero();
     pred_meas.setZero();
@@ -673,7 +689,7 @@ VectorXd GNSS_LS_pos_vel(MatrixXd gnss_measurement, int no_sat, Vector3d pEst_E_
             v_temp(1) = gnss_measurement(j, 6);
             v_temp(2) = gnss_measurement(j, 7);
 
-            delta_r = p_temp - output.segment(0, 3);
+            delta_r = p_temp - x_est_1.segment(0, 3);
             approx_range = delta_r.norm();
 
             // Calculate frame rotation during signal transit time using (Grove2nd:8.36)
@@ -687,13 +703,13 @@ VectorXd GNSS_LS_pos_vel(MatrixXd gnss_measurement, int no_sat, Vector3d pEst_E_
             T_E2I(2, 1) = 0;
             T_E2I(2, 2) = 1;
 
-            delta_r = T_E2I.cast<double>() * p_temp - output.segment(0, 3);
+            delta_r = T_E2I.cast<double>() * p_temp - x_est_1.segment(0, 3);
             range = delta_r.norm();
             u_as_E = delta_r / range;
      
             // Predict pseudo-range rate using (9.165)
             range_rate = u_as_E.transpose() * (T_E2I.cast<double>() * (v_temp + Omega_ie.cast<double>() * p_temp) -
-                                               (x_pred.segment(0, 3) + Omega_ie.cast<double>() * output.segment(0, 3)));
+                                               (x_pred.segment(0, 3) + Omega_ie.cast<double>() * x_est_1.segment(0, 3)));
        
             pred_meas(j, 0) = range_rate + x_pred(3);  
     
@@ -709,11 +725,14 @@ VectorXd GNSS_LS_pos_vel(MatrixXd gnss_measurement, int no_sat, Vector3d pEst_E_
     }
     
     // save the estimated postion and clock offset
-    output(3) = x_est_2(0);
-    output(4) = x_est_2(1);
-    output(5) = x_est_2(2);
-    output(7) = x_est_2(3);
-    return output;
+    // output(3) = x_est_2(0);
+    // output(4) = x_est_2(1);
+    // output(5) = x_est_2(2);
+    // output(7) = x_est_2(3);
+    vEst_E_mps_(0) = x_est_2(0);
+    vEst_E_mps_(1) = x_est_2(1);
+    vEst_E_mps_(2) = x_est_2(2);
+    clockRateBias_mps_ = (float)x_est_2(3);
 }
 
 // process raw measurement to give a 8 x 1 matrix (range, range rate, x,y,z,vx,vy,vz)
@@ -856,4 +875,83 @@ VectorXd EphemerisData2PosVelClock(GNSS_raw_measurement gnss_raw_measurement)
     // cout << x << y << y << endl;
 
     return pos_vel_ecef_clock;
+}
+
+VectorXd pv_ECEF_to_NED(Vector3d &pEst_E_m_, Vector3d &vEst_E_mps_)
+{
+  VectorXd pos_vel_ned(6);
+  Vector3d pEst_D_rrm_;
+  Vector3d vEst_L_mps_;
+  // long
+  pEst_D_rrm_(1) = atan2(pEst_E_m_(1),pEst_E_m_(0));
+  double k1 = sqrt(1-Eccentricity*Eccentricity)*abs(pEst_E_m_(2));
+  double k2 = Eccentricity*Eccentricity*EarthRadius;
+  double beta = sqrt(pEst_E_m_(0)*pEst_E_m_(0) + pEst_E_m_(1)*pEst_E_m_(1));
+  double E = (k1-k2)/beta;
+  double F = (k1+k2)/beta;
+  double P = 4/3.0f*(E*F + 1);
+  double Q = 2.0f*(E*E - F*F);
+  double D = P*P*P + Q*Q;
+  double V = pow(sqrt(D)-Q,1/3.0f) - pow(sqrt(D)+Q,1/3.0f);
+  double G = 0.5f*(sqrt(E*E+V)+E);
+  double T = sqrt(G*G +(F-V*G)/(2.0f*G-E)) - G;
+  // cout << "K1" << k1 << endl; 
+  // cout << "k2" << k2 << endl; 
+  // cout << "beta" << beta << endl;
+  // cout << "E" << E << endl;
+  // cout << "F " << F << endl; 
+  // cout << "P " << P << endl; 
+  // cout << "Q " << Q << endl;
+  // cout << " V " << V << endl; 
+  // cout << "G " << G << endl;
+  // cout << "T: " << T << endl; 
+
+  // lat
+  pEst_D_rrm_(0) = copysign(1,pEst_E_m_(2))*atan((1-T*T)/(2*T*sqrt(1-Eccentricity*Eccentricity)));
+  
+  // altitude
+  //cout << "beta: " << beta << ",T: " << T << ", pEst_E_m_(2): " << pEst_E_m_(2) << ", pEst_D_rrm_(0)" << pEst_D_rrm_(0) << endl; 
+  pEst_D_rrm_(2) = (beta-EarthRadius*T)*cos(pEst_D_rrm_(0))+
+                  (pEst_E_m_(2) - copysign(1,pEst_E_m_(2))*EarthRadius*sqrt(1-Eccentricity*Eccentricity))*sin(pEst_D_rrm_(0));
+  double cos_lat = cos(pEst_D_rrm_(0));
+  double sin_lat = sin(pEst_D_rrm_(0));
+  double cos_lon = cos(pEst_D_rrm_(1));
+  double sin_lon = sin(pEst_D_rrm_(1));
+
+  Matrix3d T_E2N;                
+  T_E2N(0,0) = -sin_lat*cos_lon;	T_E2N(0,1) = -sin_lat*sin_lon;	T_E2N(0,2) =  cos_lat;
+  T_E2N(1,0) =         -sin_lon;	T_E2N(1,1) =          cos_lon;	T_E2N(1,2) =        0;
+  T_E2N(2,0) = -cos_lat*cos_lon;	T_E2N(2,1) = -cos_lat*sin_lon;	T_E2N(2,2) = -sin_lat;
+  
+  vEst_L_mps_ = T_E2N*vEst_E_mps_;
+
+  pos_vel_ned.segment(0,3) =  pEst_D_rrm_;
+  pos_vel_ned.segment(3,3) =  vEst_L_mps_;
+
+  return pos_vel_ned; 
+
+}
+// Gravitation_ECI - Calculates  acceleration due to gravity resolved about ECEF-frame
+Vector3d Gravity_ECEF(Vector3d &pEst_E_m_)
+{
+   Vector3d aGrav_E_mps2;
+   double  mag_r = sqrt((pEst_E_m_.transpose())*pEst_E_m_);
+   if (mag_r == 0)
+   {
+     aGrav_E_mps2(0) = 0; aGrav_E_mps2(1) = 0; aGrav_E_mps2(2) = 0; 
+   }
+   else
+   {
+     double z_scale = 5.0f * (pEst_E_m_(2)/mag_r)*(pEst_E_m_(2)/mag_r);
+     Vector3d gamma;
+     gamma(0) = -MU/pow(mag_r,3)*(pEst_E_m_(0) + 1.5f*J2*pow(EarthRadius/mag_r,2)*(1-z_scale)*pEst_E_m_(0));
+     gamma(1) = -MU/pow(mag_r,3)*(pEst_E_m_(1) + 1.5f*J2*pow(EarthRadius/mag_r,2)*(1-z_scale)*pEst_E_m_(1));
+     gamma(2) = -MU/pow(mag_r,3)*(pEst_E_m_(2) + 1.5f*J2*pow(EarthRadius/mag_r,2)*(3-z_scale)*pEst_E_m_(2));
+     aGrav_E_mps2(0) = gamma(0) + pow(OMEGA_DOT_EARTH,2)*pEst_E_m_(0); 
+     aGrav_E_mps2(1) = gamma(1) + pow(OMEGA_DOT_EARTH,2)*pEst_E_m_(1); 
+     aGrav_E_mps2(2) = gamma(2);
+   }
+
+  return aGrav_E_mps2;  
+
 }

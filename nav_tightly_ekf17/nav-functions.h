@@ -29,6 +29,7 @@ All units meters and radians
 //#include <Eigen/Dense>
 //#include <Eigen/Geometry>
 using namespace Eigen;
+#include "../nav_common/structs.h"
 
 // Constants
 const double EarthRadius = 6378137.0;        // earth semi-major axis radius (m)
@@ -38,11 +39,11 @@ const double ECC2 = 0.0066943799901;         // major eccentricity squared
 const double MU = 3.986005e14; //m^3 / sec^2
 const double OMEGA_DOT_EARTH = 7.2921151467e-5; // rad/sec
 const double c = 299792458; // Speed of light in m/s
-
+const double J2 = 1.082627e-3; // WGS84 Earth's second gravitational constant
 
 // Constants that are no longer used
 // const double EarthRate = 0.00007292115;      // rotation rate of earth (rad/sec)
-// const double Eccentricity = 0.0818191908426; // major eccentricity of earth ellipsoid
+const double Eccentricity = 0.0818191908426; // major eccentricity of earth ellipsoid
 // const double Flattening = 0.0033528106650;   // flattening of the ellipsoid
 // const double Gravity0 = 9.7803730;           // zeroth coefficient for gravity model
 // const double Gravity1 = 0.0052891;           // first coefficient for the gravity model
@@ -96,14 +97,21 @@ VectorXd EphemerisData2Satecef(float t,
 // eul = [yaw,pitch,roll]. (i.e., 3-2-1 rotation convention)
 Matrix3f Eul2DCM(Vector3f eul); // this might need to change to double 
 
+// Convert DCM to Euler 
+Vector3f DCM2Eul(Matrix3f T_B2L);
+
 // ned 2 ecef centered at the coordinate given by lla
 Vector3f L2E(Vector3f p_L, Vector3f pRef_D); // this might need to change to double 
 
 // compute vehicle's postion, velocity in E frame and clock offset (m) and drift (m/s) 
-VectorXd GNSS_LS_pos_vel(MatrixXd gnss_measurement, int no_sat, Vector3d pEst_E_m_, Vector3d vEst_E_mps_);
+void GNSS_LS_pos_vel(MatrixXd &gnss_measurement, int no_sat, 
+                     Vector3d &pEst_E_m_, Vector3d &vEst_E_mps_, double &clockBias_m_, double &clockRateBias_mps_);
 
 // process raw measurement to give a 8 x 1 matrix (range, range rate, x,y,z,vx,vy,vz)
 VectorXd EphemerisData2PosVelClock(GNSS_raw_measurement gnss_raw_measurement);
 
+// Converts Cartesian  to curvilinear position and velocity resolving axes from ECEF to NED
+VectorXd pv_ECEF_to_NED(Vector3d &pEst_E_m_, Vector3d &vEst_E_mps_);
 
-
+// Gravitation_ECI - Calculates  acceleration due to gravity resolved about ECEF-frame
+Vector3d Gravity_ECEF(Vector3d &pEst_E_m_);

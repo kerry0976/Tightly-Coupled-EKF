@@ -40,11 +40,13 @@ class uNavINS {
   public:
     uNavINS() {};
     void Configure();
+    // void Initialize(Vector3f wMeas_B_rps, Vector3f aMeas_B_mps2, Vector3f magMeas_B_uT,
+    //                 Vector3d pMeas_D_rrm, Vector3f vMeas_L_mps);
     void Initialize(Vector3f wMeas_B_rps, Vector3f aMeas_B_mps2, Vector3f magMeas_B_uT,
-                    Vector3d pMeas_D_rrm, Vector3f vMeas_L_mps);
+                     MatrixXd &gnss_measurement);                
     bool Initialized() { return initialized_; } // returns whether the INS has been initialized
     // void Update(uint64_t t_us, unsigned long timeWeek, Vector3f wMeas_B_rps, Vector3f aMeas_B_mps2, Vector3f magMeas_B_uT, Vector3d pMeas_D_rrm, Vector3f vMeas_L_mps);
-    void Update(uint64_t t_us, unsigned long timeWeek, Vector3f wMeas_B_rps, Vector3f aMeas_B_mps2, Vector3f magMeas_B_uT, GNSS_raw_measurement gnss_raw_measurement);
+    void Update(uint64_t t_us, unsigned long timeWeek, Vector3f wMeas_B_rps, Vector3f aMeas_B_mps2, Vector3f magMeas_B_uT,  MatrixXd &gnss_measurement);
     // Set Configuration
     inline void Set_AccelSigma(float val) { aNoiseSigma_mps2 = val; }
     inline void Set_AccelMarkov(float val) { aMarkovSigma_mps2 = val; }
@@ -81,11 +83,11 @@ class uNavINS {
     inline float Get_Track() { return atan2f(vEst_L_mps_(1), vEst_L_mps_(0)); }
 
     // Get Covariance Estimates
-    inline Vector3f Get_CovPos() { return P_.block(0,0,3,3).diagonal(); }
-    inline Vector3f Get_CovVel() { return P_.block(3,3,3,3).diagonal(); }
-    inline Vector3f Get_CovOrient() { return P_.block(6,6,3,3).diagonal(); }
-    inline Vector3f Get_CovAccelBias() { return P_.block(9,9,3,3).diagonal(); }
-    inline Vector3f Get_CovRotRateBias() { return P_.block(12,12,3,3).diagonal(); }
+    inline Vector3d Get_CovPos() { return P_.block(0,0,3,3).diagonal(); }
+    inline Vector3d Get_CovVel() { return P_.block(3,3,3,3).diagonal(); }
+    inline Vector3d Get_CovOrient() { return P_.block(6,6,3,3).diagonal(); }
+    inline Vector3d Get_CovAccelBias() { return P_.block(9,9,3,3).diagonal(); }
+    inline Vector3d Get_CovRotRateBias() { return P_.block(12,12,3,3).diagonal(); }
 
     // Get Innovation
     //inline Vector3f Get_InnovationPos() { return S_.block(0,0,3,3).diagonal(); }
@@ -119,8 +121,8 @@ class uNavINS {
     float vNoiseSigma_NE_mps = 0.5f; // GPS measurement noise std dev (m/s)
     float vNoiseSigma_D_mps = 1.0f; // GPS measurement noise std dev (m/s)
 
-    float pseudorangeNoiseSigma_m = 0.1f; // GPS pseudorange measurement noise std dev (m)
-    float pseudorangeRateNoiseSigma_mps = 0.2f; // GPS pseudorange rate measurement noise std dev (m/s)
+    float pseudorangeNoiseSigma_m = 1.0f; // GPS pseudorange measurement noise std dev (m)
+    float pseudorangeRateNoiseSigma_mps = 1.0f; // GPS pseudorange rate measurement noise std dev (m/s)
 
     // Initial set of covariance
     float pErrSigma_Init_m = 10.0f; // Std dev of initial position error (m)
@@ -142,9 +144,9 @@ class uNavINS {
     // Kalman Matrices
     //Matrix<float,6,15> H_; // Observation matrix
     //Matrix<float,6,6> R_;// Covariance of the Observation Noise (associated with MeasUpdate())
-    Matrix<float,14,14> Rw_; // Covariance of the Sensor Noise (associated with TimeUpdate())
+    Matrix<double,14,14> Rw_; // Covariance of the Sensor Noise (associated with TimeUpdate())
     //Matrix<float,6,6> S_; // Innovation covariance
-    Matrix<float,17,17> P_; // Covariance estimate
+    Matrix<double,17,17> P_; // Covariance estimate
 
     // Global variables
     Vector3f aBias_mps2_; // acceleration bias
@@ -155,18 +157,20 @@ class uNavINS {
     Vector3f wEst_B_rps_; // Estimated rotation rate in Body
     Vector3f vEst_L_mps_; // Estimated velocity in NED  (m/s)
     Vector3d pEst_D_rrm_; // Estimated position in LLA (rad, rad, m)
-    Vector3f pEst_E_m_;   // Estimated position in ECEF - frame (m, m, m)
-    Vector3f vEst_E_mps_; // Estimated velocity in ECEF (m/s)
-    float clockBias_m_; // clock bias
-    float clockRateBias_mps_; // clock rate bias
+    Vector3d pEst_E_m_;   // Estimated position in ECEF - frame (m, m, m)
+    Vector3d vEst_E_mps_; // Estimated velocity in ECEF (m/s)
+    double clockBias_m_; // clock bias
+    double clockRateBias_mps_; // clock rate bias
     Vector3d omega_ie;  // Earth rate vector 
     Matrix3d Omega_ie;  // Earth rate rotation matrix 
     //GNSS_raw_measurement gnss_raw_measurement_; 
    
     // Methods
-    void TimeUpdate();
+    void TimeUpdateNED();
+    void TimeUpdateECEF();
     //void MeasUpdate(Vector3d pMeas_D_rrm, Vector3f vMeas_L_mps);
-    MatrixXd getGNSSmeasurement(GNSS_raw_measurement gnss_raw_measurement,unsigned long timeWeek);
-    void MeasUpdate17(Matrix<double,Dynamic,8> gnss_measurement);
-    void MeasSeqUpdate17(Matrix<double, Dynamic, 8> gnss_measurement);
+    void MeasUpdate17NED(MatrixXd &gnss_measurement);
+    // void MeasSeqUpdate17(MatrixXd &gnss_measurement);
+    void MeasUpdate17ECEF(MatrixXd &gnss_measurement);
+    
 };
